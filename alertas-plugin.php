@@ -155,17 +155,12 @@ function mostrar_alertas_shortcode() {
         while ($alertas->have_posts()) {
             $alertas->the_post();
             $tipo_alerta = get_post_meta(get_the_ID(), 'tipo_alerta', true);
-            $fecha_publicacion = get_post_meta(get_the_ID(), 'fecha_publicacion', true);
-            $fecha_expiracion = get_post_meta(get_the_ID(), 'fecha_expiracion', true);
             $clase_alerta = ($tipo_alerta === 'emergencia') ? 'alerta-emergencia' : 'alerta-informativa';
             ?>
             <div class="alerta <?php echo esc_attr($clase_alerta); ?>">
                 <h3><?php the_title(); ?></h3>
                 <div><?php the_content(); ?></div>
                 <p><strong>Tipo:</strong> <?php echo esc_html(ucfirst($tipo_alerta)); ?></p>
-                <p><strong>Fecha de Publicación:</strong> <?php echo esc_html($fecha_publicacion); ?></p>
-                <p><strong>Fecha de Expiración:</strong> <?php echo esc_html($fecha_expiracion); ?></p>
-                <p><small>Publicado por <?php the_author(); ?> el <?php the_date(); ?></small></p>
             </div>
             <?php
         }
@@ -177,17 +172,24 @@ function mostrar_alertas_shortcode() {
     wp_reset_postdata();
     ?>
     <style>
+        .lista-alertas {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
         .lista-alertas .alerta {
             border: 1px solid #ccc;
             padding: 15px;
-            margin-bottom: 10px;
+            flex: 1;
+            min-width: 200px;
+            max-width: 300px;
         }
         .alerta-informativa {
-            background-color: #e6f3ff;
+            background-color: #ced4da;
         }
         .alerta-emergencia {
-            background-color: #ffe6e6;
-            border-color: #ff0000;
+            background-color: #bc6c25;
+            color: #ffffff;
         }
     </style>
     <?php
