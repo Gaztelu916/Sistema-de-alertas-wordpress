@@ -2,7 +2,7 @@
 /*
 Plugin Name: Sistema de Alertas Frontend
 Description: Permite a administradores crear, editar y publicar alertas desde el frontend en WordPress, con tipo (informativa/emergencia), fecha de publicación y expiración automática.
-Version: 1.4.2
+Version: 1.4.3
 Author: Oscar Gaztelu
 */
 
@@ -54,6 +54,9 @@ function formulario_alertas_shortcode() {
         return '<p>Solo los administradores pueden crear alertas.</p>';
     }
 
+    $error = '';
+    $success = '';
+
     if (isset($_POST['crear_alerta']) && check_admin_referer('crear_alerta_nonce')) {
         $titulo = sanitize_text_field($_POST['alerta_titulo']);
         $contenido = sanitize_textarea_field($_POST['alerta_contenido']);
@@ -61,25 +64,40 @@ function formulario_alertas_shortcode() {
         $fecha_publicacion = sanitize_text_field($_POST['alerta_fecha']);
         $fecha_expiracion = sanitize_text_field($_POST['alerta_fecha_expiracion']);
 
-        $post_id = wp_insert_post(array(
-            'post_title' => $titulo,
-            'post_content' => $contenido,
-            'post_type' => 'alerta',
-            'post_status' => 'publish',
-            'post_author' => get_current_user_id(),
-        ));
-
-        if ($post_id) {
-            update_post_meta($post_id, 'tipo_alerta', $tipo_alerta);
-            update_post_meta($post_id, 'fecha_publicacion', $fecha_publicacion);
-            update_post_meta($post_id, 'fecha_expiracion', $fecha_expiracion);
-            echo '<p class="alerta-exito">¡Alerta creada con éxito!</p>';
+        // Validar fechas
+        if (empty($fecha_publicacion) || empty($fecha_expiracion)) {
+            $error = '<p class="alerta-error">Las fechas son obligatorias.</p>';
+        } elseif (strtotime($fecha_expiracion) <= strtotime($fecha_publicacion)) {
+            $error = '<p class="alerta-error">La fecha de expiración debe ser posterior a la fecha de publicación.</p>';
         } else {
-            echo '<p class="alerta-error">Error al crear la alerta.</p>';
+            // Determinar estado según la fecha de publicación
+            $ahora = current_time('mysql');
+            $post_status = (strtotime($fecha_publicacion) > strtotime($ahora)) ? 'future' : 'publish';
+            $post_date = date('Y-m-d H:i:s', strtotime($fecha_publicacion));
+
+            $post_id = wp_insert_post(array(
+                'post_title' => $titulo,
+                'post_content' => $contenido,
+                'post_type' => 'alerta',
+                'post_status' => $post_status,
+                'post_author' => get_current_user_id(),
+                'post_date' => $post_date,
+            ));
+
+            if ($post_id) {
+                update_post_meta($post_id, 'tipo_alerta', $tipo_alerta);
+                update_post_meta($post_id, 'fecha_publicacion', $post_date);
+                update_post_meta($post_id, 'fecha_expiracion', date('Y-m-d H:i:s', strtotime($fecha_expiracion)));
+                $success = '<p class="alerta-exito">¡Alerta creada con éxito!</p>';
+            } else {
+                $error = '<p class="alerta-error">Error al crear la alerta. Por favor, intenta de nuevo.</p>';
+                error_log('Error al crear alerta: wp_insert_post falló para título ' . $titulo);
+            }
         }
     }
 
     ob_start();
+    echo $error . $success;
     ?>
     <form method="post" class="formulario-alertas">
         <?php wp_nonce_field('crear_alerta_nonce'); ?>
@@ -159,7 +177,6 @@ function formulario_editar_alerta_shortcode($atts) {
         return '<p>Solo los administradores pueden editar alertas.</p>';
     }
 
-    // Obtener ID desde URL o atributo del shortcode
     $alerta_id = isset($_GET['id']) ? intval($_GET['id']) : (isset($atts['id']) ? intval($atts['id']) : 0);
     if (!$alerta_id) {
         return '<p>ID de alerta no válido.</p>';
@@ -170,6 +187,9 @@ function formulario_editar_alerta_shortcode($atts) {
         return '<p>Alerta no encontrada.</p>';
     }
 
+    $error = '';
+    $success = '';
+
     if (isset($_POST['editar_alerta']) && check_admin_referer('editar_alerta_nonce')) {
         $titulo = sanitize_text_field($_POST['alerta_titulo']);
         $contenido = sanitize_textarea_field($_POST['alerta_contenido']);
@@ -177,19 +197,34 @@ function formulario_editar_alerta_shortcode($atts) {
         $fecha_publicacion = sanitize_text_field($_POST['alerta_fecha']);
         $fecha_expiracion = sanitize_text_field($_POST['alerta_fecha_expiracion']);
 
-        $post_id = wp_update_post(array(
-            'ID' => $alerta_id,
-            'post_title' => $titulo,
-            'post_content' => $contenido,
-        ));
-
-        if ($post_id) {
-            update_post_meta($alerta_id, 'tipo_alerta', $tipo_alerta);
-            update_post_meta($alerta_id, 'fecha_publicacion', $fecha_publicacion);
-            update_post_meta($alerta_id, 'fecha_expiracion', $fecha_expiracion);
-            echo '<p class="alerta-exito">¡Alerta actualizada con éxito!</p>';
+        // Validar fechas
+        if (empty($fecha_publicacion) || empty($fecha_expiracion)) {
+            $error = '<p class="alerta-error">Las fechas son obligatorias.</p>';
+        } elseif (strtotime($fecha_expiracion) <= strtotime($fecha_publicacion)) {
+            $error = '<p class="alerta-error">La fecha de expiración debe ser posterior a la fecha de publicación.</p>';
         } else {
-            echo '<p class="alerta-error">Error al actualizar la alerta.</p>';
+            // Determinar estado según la fecha de publicación
+            $ahora = current_time('mysql');
+            $post_status = (strtotime($fecha_publicacion) > strtotime($ahora)) ? 'future' : 'publish';
+            $post_date = date('Y-m-d H:i:s', strtotime($fecha_publicacion));
+
+            $post_id = wp_update_post(array(
+                'ID' => $alerta_id,
+                'post_title' => $titulo,
+                'post_content' => $contenido,
+                'post_status' => $post_status,
+                'post_date' => $post_date,
+            ));
+
+            if ($post_id) {
+                update_post_meta($alerta_id, 'tipo_alerta', $tipo_alerta);
+                update_post_meta($alerta_id, 'fecha_publicacion', $post_date);
+                update_post_meta($alerta_id, 'fecha_expiracion', date('Y-m-d H:i:s', strtotime($fecha_expiracion)));
+                $success = '<p class="alerta-exito">¡Alerta actualizada con éxito!</p>';
+            } else {
+                $error = '<p class="alerta-error">Error al actualizar la alerta. Por favor, intenta de nuevo.</p>';
+                error_log('Error al actualizar alerta ID ' . $alerta_id);
+            }
         }
     }
 
@@ -197,7 +232,12 @@ function formulario_editar_alerta_shortcode($atts) {
     $fecha_publicacion = get_post_meta($alerta_id, 'fecha_publicacion', true);
     $fecha_expiracion = get_post_meta($alerta_id, 'fecha_expiracion', true);
 
+    // Convertir fechas al formato datetime-local
+    $fecha_publicacion_form = $fecha_publicacion ? date('Y-m-d\TH:i', strtotime($fecha_publicacion)) : '';
+    $fecha_expiracion_form = $fecha_expiracion ? date('Y-m-d\TH:i', strtotime($fecha_expiracion)) : '';
+
     ob_start();
+    echo $error . $success;
     ?>
     <form method="post" class="formulario-alertas">
         <?php wp_nonce_field('editar_alerta_nonce'); ?>
@@ -218,11 +258,11 @@ function formulario_editar_alerta_shortcode($atts) {
         </div>
         <div>
             <label for="alerta_fecha">Fecha y Hora de Publicación:</label>
-            <input type="datetime-local" name="alerta_fecha" id="alerta_fecha" value="<?php echo esc_attr($fecha_publicacion); ?>" required>
+            <input type="datetime-local" name="alerta_fecha" id="alerta_fecha" value="<?php echo esc_attr($fecha_publicacion_form); ?>" required>
         </div>
         <div>
             <label for="alerta_fecha_expiracion">Fecha y Hora de Expiración:</label>
-            <input type="datetime-local" name="alerta_fecha_expiracion" id="alerta_fecha_expiracion" value="<?php echo esc_attr($fecha_expiracion); ?>" required>
+            <input type="datetime-local" name="alerta_fecha_expiracion" id="alerta_fecha_expiracion" value="<?php echo esc_attr($fecha_expiracion_form); ?>" required>
         </div>
         <button type="submit" name="editar_alerta">Actualizar Alerta</button>
     </form>
@@ -277,6 +317,14 @@ function mostrar_alertas_shortcode() {
         'post_type' => 'alerta',
         'posts_per_page' => 10,
         'post_status' => 'publish',
+        'meta_query' => array(
+            array(
+                'key' => 'fecha_publicacion',
+                'value' => current_time('mysql'),
+                'compare' => '<=',
+                'type' => 'DATETIME',
+            ),
+        ),
     );
 
     $alertas = new WP_Query($args);
@@ -380,7 +428,10 @@ function eliminar_alertas_expiradas() {
     if ($alertas->have_posts()) {
         while ($alertas->have_posts()) {
             $alertas->the_post();
-            wp_trash_post(get_the_ID());
+            $post_id = get_the_ID();
+            if (!wp_trash_post($post_id)) {
+                error_log('Error al mover alerta ID ' . $post_id . ' a la papelera.');
+            }
         }
     }
     wp_reset_postdata();
